@@ -6,11 +6,28 @@ const NameEntryLabel = styled.label`
 const NameEntryInput = styled.input`
 `
 
-const PlayerSettings = (props) => {
-  const { playerName, setPlayerName } = props;
+const ColorEntryLabel = styled.label`
+`
 
-  const handleChangePlayerName = (event) => {
+const ColorEntryInput = styled.input`
+`
+
+interface PlayerSettingsProps {
+  playerName: string,
+  setPlayerName: (input: string) => void,
+  playerColor: string,
+  setPlayerColor: (input: string) => void,
+}
+
+const PlayerSettings = (props: PlayerSettingsProps) => {
+  const { playerName, setPlayerName, playerColor, setPlayerColor } = props;
+
+  const handleChangePlayerName = (event: { target: { value: string; }; }) => {
     setPlayerName(event.target.value);
+  };
+
+  const handleChangePlayerColor = (event: { target: { value: string; }; }) => {
+    setPlayerColor(event.target.value);
   };
 
   return (
@@ -20,7 +37,14 @@ const PlayerSettings = (props) => {
         type="text"
         value={playerName}
         onChange={handleChangePlayerName}
-      ></NameEntryInput>
+      />
+
+      <ColorEntryLabel>Color:</ColorEntryLabel>
+      <ColorEntryInput
+        type="color"
+        value={playerColor}
+        onChange={handleChangePlayerColor}
+      />
     </>
   )
 }
