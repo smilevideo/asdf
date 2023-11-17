@@ -1,22 +1,3 @@
-
-"""
-An example WebTransport over HTTP/3 server based on the aioquic library.
-Processes incoming streams and datagrams, and
-replies with the ASCII-encoded length of the data sent in bytes.
-Example use:
-  python3 webtransport_server.py certificate.pem certificate.key
-Example use from JavaScript:
-  let transport = new WebTransport("https://localhost:4433/counter");
-  await transport.ready;
-  let stream = await transport.createBidirectionalStream();
-  let encoder = new TextEncoder();
-  let writer = stream.writable.getWriter();
-  await writer.write(encoder.encode("Hello, world!"))
-  writer.close();
-  console.log(await new Response(stream.readable).text());
-This will output "13" (the length of "Hello, world!") into the console.
-"""
-
 import argparse
 import asyncio
 import logging
