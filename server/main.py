@@ -1,24 +1,43 @@
-import argparse
 import asyncio
-import logging
 import json
-import time
+import logging
+import os
+import pathlib
 from collections import defaultdict
 from typing import Dict, Optional
 
+import google.cloud.logging
 from aioquic.asyncio import QuicConnectionProtocol, serve
 from aioquic.h3.connection import H3_ALPN, H3Connection
 from aioquic.h3.events import H3Event, HeadersReceived, WebTransportStreamDataReceived, DatagramReceived
 from aioquic.quic.configuration import QuicConfiguration
 from aioquic.quic.connection import stream_is_unidirectional
 from aioquic.quic.events import ProtocolNegotiated, StreamReset, QuicEvent
+from flask import Flask
 
 BIND_ADDRESS = '::1'
 BIND_PORT = 4433
 
+# Instantiates a client
+client = google.cloud.logging.Client()
+
+# Retrieves a Cloud Logging handler based on the environment
+# you're running in and integrates the handler with the
+# Python logging module. By default this captures all logs
+# at INFO level and higher
+client.setup_logging()
+
 logger = logging.getLogger(__name__)
+logger.info("Google Cloud Logging client initialized")
+app = Flask(__name__)
 
 connections = []
+
+# sanity check to ensure our app is actually online
+@app.route("/online")
+def hi():
+    return "I'm online"
+
 
 class CounterHandler:
 
@@ -29,7 +48,7 @@ class CounterHandler:
 
     def http3_event_received(self, event: H3Event) -> None:
         print(event)
-        
+
         if isinstance(event, DatagramReceived):
             data = json.loads(event.data.decode('utf-8'))
             position, color = data.values()
@@ -69,7 +88,7 @@ class WebTransportProtocol(QuicConnectionProtocol):
         self._http: Optional[H3Connection] = None
         self._handler: Optional[CounterHandler] = None
 
-    def quic_event_received(self, event: QuicEvent) -> None:      
+    def quic_event_received(self, event: QuicEvent) -> None:
         if isinstance(event, ProtocolNegotiated):
             self._http = H3Connection(self._quic, enable_webtransport=True)
         elif isinstance(event, StreamReset) and self._handler is not None:
@@ -107,7 +126,7 @@ class WebTransportProtocol(QuicConnectionProtocol):
             self._send_response(stream_id, 400, end_stream=True)
             return
         if path == b"/counter":
-            assert(self._handler is None)
+            assert (self._handler is None)
             self._handler = CounterHandler(stream_id, self._http)
             connections.append(self._http)
             self._send_response(stream_id, 200)
@@ -126,17 +145,19 @@ class WebTransportProtocol(QuicConnectionProtocol):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('certificate')
-    parser.add_argument('key')
-    args = parser.parse_args()
+    app.run(host="0.0.0.0", port=8080)
+    logging.info("Starting server")
+    certificate = pathlib.Path(os.environ.get("certificate"))
+    key = pathlib.Path(os.environ.get("key"))
+    logging.debug("certificate={}".format(certificate))
+    logging.debug("key={}".format(key))
 
     configuration = QuicConfiguration(
         alpn_protocols=H3_ALPN,
         is_client=False,
         max_datagram_frame_size=65536,
     )
-    configuration.load_cert_chain(args.certificate, args.key)
+    configuration.load_cert_chain(certificate, key)
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(

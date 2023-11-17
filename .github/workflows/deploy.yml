@@ -1,0 +1,33 @@
+name: Deploy
+on:
+  push:
+    branches:
+      - release
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and deploy
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+
+      - name: Auth
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Deploy App Engine
+        uses: google-github-actions/deploy-appengine@v1
+        with:
+          working_directory: ./server
