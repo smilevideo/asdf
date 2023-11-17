@@ -28,17 +28,16 @@ class CounterHandler:
         self._counters = defaultdict(int)
 
     def http3_event_received(self, event: H3Event) -> None:
+        print(event)
+        
         if isinstance(event, DatagramReceived):
             data = json.loads(event.data.decode('utf-8'))
             position, color = data.values()
 
             payload = str(json.dumps({"position": position, "color": color})).encode('ascii')
 
-            counter = 0
             for connection in connections:
                 connection.send_datagram(self._session_id, payload)
-                print(counter)
-                counter = counter + 1
 
         if isinstance(event, WebTransportStreamDataReceived):
             self._counters[event.stream_id] += len(event.data)
