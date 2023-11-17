@@ -109,6 +109,7 @@ class CounterHandler:
         self._counters = defaultdict(int)
 
     def h3_event_received(self, event: H3Event) -> None:
+        print (event)
         if isinstance(event, DatagramReceived):
             payload = str(len(event.data)).encode('ascii')
             self._http.send_datagram(self._session_id, payload)

@@ -1,18 +1,4 @@
-#!/usr/bin/env python3
 
-# Copyright 2020 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     https://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 """
 An example WebTransport over HTTP/3 server based on the aioquic library.
 Processes incoming streams and datagrams, and
@@ -31,52 +17,11 @@ Example use from JavaScript:
 This will output "13" (the length of "Hello, world!") into the console.
 """
 
-# ---- Dependencies ----
-#
-# This server only depends on Python standard library and aioquic 0.9.19 or
-# later. See https://github.com/aiortc/aioquic for instructions on how to
-# install aioquic.
-#
-# ---- Certificates ----
-#
-# HTTP/3 always operates using TLS, meaning that running a WebTransport over
-# HTTP/3 server requires a valid TLS certificate.  The easiest way to do this
-# is to get a certificate from a real publicly trusted CA like
-# <https://letsencrypt.org/>.
-# https://developers.google.com/web/fundamentals/security/encrypt-in-transit/enable-https
-# contains a detailed explanation of how to achieve that.
-#
-# As an alternative, Chromium can be instructed to trust a self-signed
-# certificate using command-line flags.  Here are step-by-step instructions on
-# how to do that:
-#
-#   1. Generate a certificate and a private key:
-#         openssl req -newkey rsa:2048 -nodes -keyout certificate.key \
-#                   -x509 -out certificate.pem -subj '/CN=Test Certificate' \
-#                   -addext "subjectAltName = DNS:localhost"
-#
-#   2. Compute the fingerprint of the certificate:
-#         openssl x509 -pubkey -noout -in certificate.pem |
-#                   openssl rsa -pubin -outform der |
-#                   openssl dgst -sha256 -binary | base64
-#      The result should be a base64-encoded blob that looks like this:
-#          "Gi/HIwdiMcPZo2KBjnstF5kQdLI5bPrYJ8i3Vi6Ybck="
-#
-#   3. Pass a flag to Chromium indicating what host and port should be allowed
-#      to use the self-signed certificate.  For instance, if the host is
-#      localhost, and the port is 4433, the flag would be:
-#         --origin-to-force-quic-on=localhost:4433
-#
-#   4. Pass a flag to Chromium indicating which certificate needs to be trusted.
-#      For the example above, that flag would be:
-#         --ignore-certificate-errors-spki-list=Gi/HIwdiMcPZo2KBjnstF5kQdLI5bPrYJ8i3Vi6Ybck=
-#
-# See https://www.chromium.org/developers/how-tos/run-chromium-with-flags for
-# details on how to run Chromium with flags.
-
 import argparse
 import asyncio
 import logging
+import json
+import time
 from collections import defaultdict
 from typing import Dict, Optional
 
@@ -92,15 +37,8 @@ BIND_PORT = 4433
 
 logger = logging.getLogger(__name__)
 
-# CounterHandler implements a really simple protocol:
-#   - For every incoming bidirectional stream, it counts bytes it receives on
-#     that stream until the stream is closed, and then replies with that byte
-#     count on the same stream.
-#   - For every incoming unidirectional stream, it counts bytes it receives on
-#     that stream until the stream is closed, and then replies with that byte
-#     count on a new unidirectional stream.
-#   - For every incoming datagram, it sends a datagram with the length of
-#     datagram that was just received.
+connections = []
+
 class CounterHandler:
 
     def __init__(self, session_id, http: H3Connection) -> None:
@@ -108,10 +46,18 @@ class CounterHandler:
         self._http = http
         self._counters = defaultdict(int)
 
-    def h3_event_received(self, event: H3Event) -> None:
+    def http3_event_received(self, event: H3Event) -> None:
         if isinstance(event, DatagramReceived):
-            payload = str(len(event.data)).encode('ascii')
-            self._http.send_datagram(self._session_id, payload)
+            data = json.loads(event.data.decode('utf-8'))
+            position, color = data.values()
+
+            payload = str(json.dumps({"position": position, "color": color})).encode('ascii')
+
+            counter = 0
+            for connection in connections:
+                connection.send_datagram(self._session_id, payload)
+                print(counter)
+                counter = counter + 1
 
         if isinstance(event, WebTransportStreamDataReceived):
             self._counters[event.stream_id] += len(event.data)
@@ -143,7 +89,7 @@ class WebTransportProtocol(QuicConnectionProtocol):
         self._http: Optional[H3Connection] = None
         self._handler: Optional[CounterHandler] = None
 
-    def quic_event_received(self, event: QuicEvent) -> None:
+    def quic_event_received(self, event: QuicEvent) -> None:      
         if isinstance(event, ProtocolNegotiated):
             self._http = H3Connection(self._quic, enable_webtransport=True)
         elif isinstance(event, StreamReset) and self._handler is not None:
@@ -153,10 +99,10 @@ class WebTransportProtocol(QuicConnectionProtocol):
             self._handler.stream_closed(event.stream_id)
 
         if self._http is not None:
-            for h3_event in self._http.handle_event(event):
-                self._h3_event_received(h3_event)
+            for http3_event in self._http.handle_event(event):
+                self._http3_event_received(http3_event)
 
-    def _h3_event_received(self, event: H3Event) -> None:
+    def _http3_event_received(self, event: H3Event) -> None:
         if isinstance(event, HeadersReceived):
             headers = {}
             for header, value in event.headers:
@@ -168,13 +114,14 @@ class WebTransportProtocol(QuicConnectionProtocol):
                 self._send_response(event.stream_id, 400, end_stream=True)
 
         if self._handler:
-            self._handler.h3_event_received(event)
+            self._handler.http3_event_received(event)
 
     def _handshake_webtransport(self,
                                 stream_id: int,
                                 request_headers: Dict[bytes, bytes]) -> None:
         authority = request_headers.get(b":authority")
         path = request_headers.get(b":path")
+
         if authority is None or path is None:
             # `:authority` and `:path` must be provided.
             self._send_response(stream_id, 400, end_stream=True)
@@ -182,6 +129,7 @@ class WebTransportProtocol(QuicConnectionProtocol):
         if path == b"/counter":
             assert(self._handler is None)
             self._handler = CounterHandler(stream_id, self._http)
+            connections.append(self._http)
             self._send_response(stream_id, 200)
         else:
             self._send_response(stream_id, 404, end_stream=True)

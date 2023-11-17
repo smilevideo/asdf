@@ -1,15 +1,30 @@
 import styled from 'styled-components';
 
+const Container = styled.div`
+  position: relative;
+  top: -300px;
+  z-index: 1;
+
+  height: 21px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+`
+
 const NameEntryLabel = styled.label`
 `
 
 const NameEntryInput = styled.input`
+  border-radius: 5px;
 `
 
 const ColorEntryLabel = styled.label`
 `
 
 const ColorEntryInput = styled.input`
+  border-radius: 5px;
+  background-color: rgb(161, 161, 161);
 `
 
 interface PlayerSettingsProps {
@@ -31,13 +46,13 @@ const PlayerSettings = (props: PlayerSettingsProps) => {
   };
 
   return (
-    <>
-      <NameEntryLabel>Name:</NameEntryLabel>
+    <Container>
+      {/* <NameEntryLabel>Name:</NameEntryLabel>
       <NameEntryInput
         type="text"
         value={playerName}
         onChange={handleChangePlayerName}
-      />
+      /> */}
 
       <ColorEntryLabel>Color:</ColorEntryLabel>
       <ColorEntryInput
@@ -45,7 +60,7 @@ const PlayerSettings = (props: PlayerSettingsProps) => {
         value={playerColor}
         onChange={handleChangePlayerColor}
       />
-    </>
+    </Container>
   )
 }
 
